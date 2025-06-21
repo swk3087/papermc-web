@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>PaperMC web</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    #console {
+      white-space: pre-wrap;
+      background: #111;
+      color: #0f0;
+      padding: 10px;
+      height: 300px;
+      overflow-y: scroll;
+    }
+    textarea { font-family: monospace; }
+    .file-item { display: flex; align-items: center; margin-bottom: 5px; }
+    .file-item button { margin-left: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Papermc mc server</h1>
+  <button onclick="startServer()">start server</button>
+  <div id="console"></div>
+  <input id="cmdInput" placeholder="input cmds" onkeydown="if(event.key==='Enter')sendCmd()" />
+
+  <hr />
+  <h2>server.properties</h2>
+  <button onclick="loadFile()">load file</button>
+  <button onclick="saveFile()">save</button>
+  <br /><br />
+  <textarea id="fileContent" style="width: 100%; height: 200px;"></textarea>
+
+  <hr />
+  <h2>plugins</h2>
+  <button onclick="loadPluginList()">reload</button>
+  <div id="pluginList">loading...</div>
+  <br />
+  <input type="file" id="pluginUpload" />
+  <button onclick="uploadPlugin()">upload</button>
+
+  <script>
+    const socket = io();
+    const consoleDiv = document.getElementById('console');
+
+    socket.on('console', msg => {
+      consoleDiv.textContent += msg;
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    });
+
+    function startServer() {
+      socket.emit('start');
+    }
+
+    function sendCmd() {
+      const cmd = document.getElementById('cmdInput').value;
+      socket.emit('command', cmd);
+      document.getElementById('cmdInput').value = '';
+    }
+
+    function loadFile() {
+      fetch(`/api/file?path=server.properties`)
+        .then(res => res.text())
+        .then(text => document.getElementById('fileContent').value = text)
+        .catch(err => alert('error : ' + err));
+    }
+
+    function saveFile() {
+      const content = document.getElementById('fileContent').value;
+      fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: 'server.properties', content })
+      }).then(res => {
+        if (res.ok) alert('saved');
+        else alert('error');
+      });
+    }
+
+    function loadPluginList() {
+      fetch('/api/files?dir=plugins')
+        .then(res => res.json())
+        .then(data => {
+          const container = document.getElementById('pluginList');
+          container.innerHTML = '';
+          if (data.files.length === 0) {
+            container.innerText = '(no plugins)';
+            return;
+          }
+          data.files.forEach(file => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.innerText = file;
+            const btn = document.createElement('button');
+            btn.innerText = 'del';
+            btn.onclick = () => deletePlugin(file);
+            div.appendChild(btn);
+            container.appendChild(div);
+          });
+        }).catch(err => {
+          document.getElementById('pluginList').innerText = 'dir load error: ' + err;
+        });
+    }
+
+    function deletePlugin(filename) {
+      fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: 'plugins/' + filename })
+      }).then(res => {
+        if (res.ok) {
+          alert('deleted');
+          loadPluginList();
+        } else {
+          alert('error');
+        }
+      });
+    }
+
+    function uploadPlugin() {
+      const fileInput = document.getElementById('pluginUpload');
+      const file = fileInput.files[0];
+      if (!file) return alert('choose file');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('dest', 'plugins');
+
+      fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      }).then(res => {
+        if (res.ok) {
+          alert('uploaded');
+          loadPluginList();
+        } else {
+          alert('error');
+        }
+      });
+    }
+
+    loadPluginList();
+  </script>
+</body>
+</html>
